@@ -1,0 +1,739 @@
+function varargout = TPS_v3(varargin)
+
+%CATEGORY -----------------------------------------------------------------
+%MAIN FORM : INITIALIZATION, CLOSING, AND MAIN CALLBACKS
+
+gui_Singleton = 1;
+gui_State = struct('gui_Name',       mfilename, ...
+                   'gui_Singleton',  gui_Singleton, ...
+                   'gui_OpeningFcn', @TPS_v3_OpeningFcn, ...
+                   'gui_OutputFcn',  @TPS_v3_OutputFcn, ...
+                   'gui_LayoutFcn',  [] , ...
+                   'gui_Callback',   []);
+if nargin && ischar(varargin{1})
+    gui_State.gui_Callback = str2func(varargin{1});
+end
+
+if nargout
+    [varargout{1:nargout}] = gui_mainfcn(gui_State, varargin{:});
+else
+    gui_mainfcn(gui_State, varargin{:});
+end
+% End initialization code - DO NOT EDIT
+
+
+% --- Executes just before TPS_v3 is made visible.
+function TPS_v3_OpeningFcn(hObject, ~, handles, varargin)
+    
+    %Send message indicating that the gui has opened properly. This message
+    %is received by a .net based application that serves as a splash-screen
+    disp('Main Gui is now open');
+
+    %Remove docking buttons
+    set(hObject,'DockControls','off');
+    
+    % Choose default command line output for TPS_v3
+    handles.output = hObject;
+
+    % Update handles structure
+    guidata(hObject, handles);
+
+    %Store this gui as a global variable. This way, you can always access
+    %gui properties and variables from any part of the program (functions,
+    %other forms etc)
+    setappdata(0,'hMainGui',gcf);
+    initializeGui(handles);
+    setV('patientDataLoaded',0);
+    setV('patientPlanLoaded',0);
+    setV('currentAction','ADJUST');
+    disableGuiMenusAndButtons(handles);
+    destroyOverlays(handles);
+    
+    
+% --- Outputs from this function are returned to the command line.
+function varargout = TPS_v3_OutputFcn(hObject, eventdata, handles) 
+
+    varargout{1} = handles.output;
+
+    
+function noCallback(src, eventdata);
+    
+% --- Executes on mouse press over figure background.
+function frmMainTPS_ButtonDownFcn(hObject, eventdata, handles)
+% hObject    handle to frmMainTPS (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+
+% --- Executes on mouse press over figure background, over a disabled or
+% --- inactive control, or over an axes background.
+function frmMainTPS_WindowButtonDownFcn(hObject, eventdata, handles)
+% hObject    handle to frmMainTPS (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+% --- Executes on mouse press over figure background, over a disabled or
+% --- inactive control, or over an axes background.
+function frmMainTPS_WindowButtonUpFcn(hObject, eventdata, handles)
+
+% --- Executes on scroll wheel click while the figure is in focus.
+function frmMainTPS_WindowScrollWheelFcn(hObject, eventdata, handles)
+    destroyOverlays(handles);
+    %Read and store the current mouse position.
+    refreshCurrentMousePos(hObject);
+    %Load current mouse position
+    currentMousePos = getV('currentMousePos');
+    
+
+    if  strcmp(currentMousePos,'Form')
+        %If the mouse is not over an axes, then scroll does nothing
+    else
+        %Else, scroll is translated into change of the cross position,
+        %hence change on what the viewer is showing
+       if getV('patientDataLoaded')
+           
+       %currentScrollAction indicates what scroll does to the viewer. If
+       %for example scroll is for traversing through slices, then act
+       %accordingly...   
+       currentScrollAction = getV('currentScrollAction');
+        switch currentScrollAction
+            case 'traverseSlices'
+                %Identify traverse direction (+ or -) and traverse on slice
+                %at a time to this direction
+                if eventdata.VerticalScrollCount>0
+                    traverseSliceInView(handles,1);
+                else
+                    traverseSliceInView(handles, -1);
+                end
+        end
+       end
+    end
+
+    
+%CATEGORY -----------------------------------------------------------------
+%ORIENTATION : THIS BUTTON GROUP SETS THE ORIENTATION MODE THAT INDICATES
+%WHICH AXIS WILL SHOW EACH OF AXIAL - SAGITAL - CORONAL VIEWS OF THE
+%CTDATA.  IT SHOULD ONLY BE ENABLED WHEN PATIENT DATA EXIST.
+
+function setBtnGroupOrientationState(handles, state)
+    try
+        set(handles.btnSAC,'Enable',state);
+        set(handles.btnCAS,'Enable',state);
+        set(handles.btnASC,'Enable',state);
+    catch e
+        disp(e.message);
+    end
+    
+    
+% --- Executes when selected object is changed in btnGroupOrientation.
+function btnGroupOrientation_SelectionChangeFcn(hObject, eventdata, handles)
+        
+        %Initialize zoom levels to [] so that the views will pass to
+        %different axes without carrying the zoom.
+        initZoom();
+        %Destroy any open overlays so that these will be recreated (is
+        %required) after updating the viewer, by calling
+        %"restoreCurrentAction" at the end of this function..
+        destroyOverlays(handles);
+        
+        %Identify and apply the new orientation mode
+        newOrientation=get(eventdata.NewValue,'tag');
+        switch newOrientation
+             case 'btnASC'
+                setV('orientationMode', 'ASC');
+                updateViewer(handles);
+                setV('currentTopView','Axial');       set(handles.TopLegent, 'String', 'Axial');
+                setV('currentBottomLView','Sagital'); set(handles.BottomLLegent, 'String', 'Sagital');
+                setV('currentBottomRView','Coronal'); set(handles.BottomRLegent, 'String', 'Coronal');
+             case 'btnCAS'
+                setV('orientationMode', 'CAS');
+                updateViewer(handles);
+                setV('currentTopView','Coronal');      set(handles.TopLegent, 'String', 'Coronal');
+                setV('currentBottomLView','Axial');    set(handles.BottomLLegent, 'String', 'Axial');
+                setV('currentBottomRView','Sagital');  set(handles.BottomRLegent, 'String', 'Sagital');
+             case 'btnSAC'
+                setV('orientationMode', 'SAC');
+                updateViewer(handles);
+                setV('currentTopView','Sagital');      set(handles.TopLegent, 'String', 'Sagital');
+                setV('currentBottomLView','Axial');    set(handles.BottomLLegent, 'String', 'Axial');
+                setV('currentBottomRView','Coronal');  set(handles.BottomRLegent, 'String', 'Coronal');
+        end
+        restoreCurrentAction(handles);
+
+        
+        
+%CATEGORY -----------------------------------------------------------------
+%MAIN LEGEND : DISPLAYS INFORMATION ON THE CURRENT WINDOW - LEVEL & CROSS
+%POSITION. IT CAN BE USED TO SET OR RESET WINDOW AND LEVEL USING TXTBOXES
+%AND BUTTONS. IT SHOULD ONLY BE ENABLED WHEN PATIENT DATA EXIST.
+
+function setMainLegendState(handles, state)
+    try
+        set(handles.btnResetLevel,'Enable',state);
+        set(handles.btnResetWindow,'Enable',state);
+        if strcmp(state,'off')
+           set(handles.txtLevelS,'Enable','inactive'); 
+           set(handles.txtWindowS,'Enable','inactive'); 
+           set(handles.txtWindowS,'String','');
+           set(handles.txtLevelS,'String','');  
+           %Change the text on the relevant gui elements
+           set(handles.txtCrossZS,'String','');
+           set(handles.txtCrossYS,'String','');
+           set(handles.txtCrossXS,'String','');
+        elseif strcmp(state,'on')
+           set(handles.txtWindowS,'Enable','on');
+           set(handles.txtWindowS,'String',getV('Window'));
+           set(handles.txtLevelS,'Enable','on');
+           set(handles.txtLevelS,'String',getV('Level')); 
+           %Change the text on the relevant gui elements
+           crossPosition = getV('crossPosition'); crossLimits = getV('crossLimits');
+           set(handles.txtCrossZS,'String',['Axial : '   num2str(crossPosition.z) '/' num2str(crossLimits.z)]);
+           set(handles.txtCrossYS,'String',['Sagital : ' num2str(crossPosition.y) '/' num2str(crossLimits.y)]);
+           set(handles.txtCrossXS,'String',['Coronal : ' num2str(crossPosition.x) '/' num2str(crossLimits.x)]);
+        end
+    catch e
+        disp(e.message);
+    end
+%
+function txtWindowI_Callback(hObject, eventdata, handles)
+% --- Executes during object creation, after setting all properties.
+function txtWindowI_CreateFcn(hObject, eventdata, handles)
+
+    if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+        set(hObject,'BackgroundColor','white');
+    end
+
+%
+function txtLevelI_Callback(hObject, eventdata, handles)
+% --- Executes during object creation, after setting all properties.
+function txtLevelI_CreateFcn(hObject, eventdata, handles)
+
+    if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+        set(hObject,'BackgroundColor','white');
+    end
+
+
+%
+function txtLevelS_Callback(hObject, eventdata, handles)
+    if getV('patientDataLoaded')
+        currentString = get(handles.txtLevelS, 'String');
+        [newLevel, status] = str2num(currentString);
+        if status==0
+            set(handles.txtLevelS,'String',getV('Level'));
+        else
+            LevelLimits = getV('LevelLimits');
+            if newLevel >= LevelLimits.min && newLevel<=LevelLimits.max
+                setV('Level',newLevel);
+                updateViewer(handles);
+            else
+                set(handles.txtLevelS,'String',getV('Level'));
+            end
+        end
+    end
+    
+% --- Executes during object creation, after setting all properties.
+function txtLevelS_CreateFcn(hObject, eventdata, handles)
+    
+    if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+        set(hObject,'BackgroundColor','white');
+    end
+
+function txtWindowS_Callback(hObject, eventdata, handles)
+    if getV('patientDataLoaded')
+        currentString = get(handles.txtWindowS, 'String');
+        [newWindow, status] = str2num(currentString);
+        if status==0
+            set(handles.txtWindowS,'String',getV('Window'));
+        else
+            WindowLimits = getV('WindowLimits');
+            if newWindow >= WindowLimits.min && newWindow<=WindowLimits.max
+                setV('Window',newWindow);
+                updateViewer(handles);
+            else
+                set(handles.txtWindowS,'String',getV('Window'));
+            end
+        end
+    end    
+% --- Executes during object creation, after setting all properties.
+function txtWindowS_CreateFcn(hObject, eventdata, handles)
+
+    if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+        set(hObject,'BackgroundColor','white');
+    end
+
+
+% --- Executes on button press in btnResetLevel.
+function btnResetLevel_Callback(hObject, eventdata, handles)
+     setV('Level',getV('InitialLevel'));
+     set(handles.txtLevelS,'String',getV('Level'));
+     updateViewer(handles);
+
+
+% --- Executes on button press in btnResetWindow.
+function btnResetWindow_Callback(hObject, eventdata, handles)
+     setV('Window',getV('InitialWindow'));
+     set(handles.txtWindowS,'String',getV('Window'));
+     updateViewer(handles);
+
+
+%
+function txtCrossXS_Callback(hObject, eventdata, handles)
+% --- Executes during object creation, after setting all properties.
+function txtCrossXS_CreateFcn(hObject, eventdata, handles)
+    
+    if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+        set(hObject,'BackgroundColor','white');
+    end
+
+%
+function txtCrossYS_Callback(hObject, eventdata, handles)
+% --- Executes during object creation, after setting all properties.
+function txtCrossYS_CreateFcn(hObject, eventdata, handles)
+
+    if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+        set(hObject,'BackgroundColor','white');
+    end
+
+%
+function txtCrossZS_Callback(hObject, eventdata, handles)
+% --- Executes during object creation, after setting all properties.
+function txtCrossZS_CreateFcn(hObject, eventdata, handles)
+
+    if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+        set(hObject,'BackgroundColor','white');
+    end
+
+%CATEGORY -----------------------------------------------------------------    
+%TOP MENU : LOAD CT DATA, IMPORT PATIENT TREATMENT PLAN, AND SHOW/HIDE
+%VOIS, ISODOSES AND DWELL POSITIONS. 
+
+% --------------------------------------------------------------------
+function File_Callback(hObject, eventdata, handles)
+
+
+
+% --------------------------------------------------------------------
+function View_Callback(hObject, eventdata, handles)
+
+
+
+% --------------------------------------------------------------------
+function showVOIS_Callback(hObject, eventdata, handles)
+    if strcmp(get(handles.showVOIS, 'Checked'),'on')
+        setV('showVOIS',0);
+    else 
+        setV('showVOIS',1);
+    end
+    updateViewer(handles);
+
+
+% --------------------------------------------------------------------
+function showDwell_Callback(hObject, eventdata, handles)
+    if strcmp(get(handles.showDwell, 'Checked'),'on')
+        setV('showDwell',0);
+    else 
+        setV('showDwell',1);
+    end
+    updateViewer(handles);
+
+
+% --------------------------------------------------------------------
+function showIsodoses_Callback(hObject, eventdata, handles)
+    if strcmp(get(handles.showIsodoses, 'Checked'),'on')
+        setV('showIsodoses',0);
+    else 
+        setV('showIsodoses',1);
+    end
+    updateViewer(handles);
+
+
+% --------------------------------------------------------------------
+function loadFullTreatmentPlan_Callback(hObject, eventdata, handles)
+    if loadPatientData('Full Patient Data')
+        
+        setV('patientDataLoaded',1);
+        setV('patientPlanLoaded',1);
+               
+           %disp(getV('orientationMode'));
+           crossLimits = getV('crossLimits');
+           setCross(handles,uint16(crossLimits.x/2),uint16(crossLimits.y/2),uint16(crossLimits.z/2));
+           set(handles.txtWindowS,'Enable','on');
+           set(handles.txtWindowS,'String',getV('Window'));
+           set(handles.txtLevelS,'Enable','on');
+           set(handles.txtLevelS,'String',getV('Level'));
+         
+        disableGuiMenusAndButtons(handles);
+        initZoom();        
+        updateViewer(handles);
+        enableGuiForFullData(handles);
+
+    end
+
+% --------------------------------------------------------------------
+function loadCTSequence_Callback(hObject, eventdata, handles)
+    if loadPatientData('CT Data')
+        setV('patientDataLoaded',1);
+        
+           %disp(getV('orientationMode'));
+           crossLimits = getV('crossLimits');
+           setCross(handles,uint16(crossLimits.x/2),uint16(crossLimits.y/2),uint16(crossLimits.z/2));
+
+        disableGuiMenusAndButtons(handles);
+        initZoom();
+        updateViewer(handles);
+        enableGuiForCTData(handles);
+    end
+
+% --------------------------------------------------------------------
+function loadRTPlan_Callback(hObject, eventdata, handles)
+    if loadPatientData('RTPlan')
+        updateViewMenuAndShowPlanState(handles);
+    end
+
+% --------------------------------------------------------------------
+function loadRTSS_Callback(hObject, eventdata, handles)
+    if loadPatientData('RTSS')
+        updateViewMenuAndShowPlanState(handles); 
+    end
+
+% --------------------------------------------------------------------
+function loadRTDose_Callback(hObject, eventdata, handles)
+    if loadPatientData('RTDose')
+        updateViewMenuAndShowPlanState(handles); 
+    end
+
+% --------------------------------------------------------------------
+function Clear_Callback(hObject, eventdata, handles)
+    setV('patientDataLoaded',0);
+    setV('patientPlanLoaded',0);
+    disableGuiMenusAndButtons(handles);
+    destroyOverlays(handles);
+    
+% --------------------------------------------------------------------
+function Exit_Callback(hObject, eventdata, handles)
+    clear all;
+    close all;
+    clc;
+
+%Enable or disable FILE MENU buttons, except from those that will always be
+%enabled.
+function setFileMenuLoadPlanState(handles, state)
+    try
+        set(handles.loadRTSS,'Enable',state);
+        set(handles.loadRTPlan,'Enable',state);
+        set(handles.loadRTDose,'Enable',state);  
+        set(handles.Clear,'Enable',state);  
+    catch e
+        disp(e.message);
+    end
+
+%Enable or disable VIEW MENU buttons. Enable will only be applied when full
+%treatment plan (data + rtplan) have been loaded.  
+function setViewMenuShowPlanState(handles, state)
+   try
+      set(handles.showVOIS,'Enable',state);
+      set(handles.showIsodoses,'Enable',state);
+      set(handles.showDwell,'Enable',state);
+      
+      set(handles.btnEditVOIs,'Enable',state);
+      
+    catch e
+        disp(e.message);
+   end   
+   
+ %Enable or disable certain buttons of the VIEW MENU and the VIEW BAR based
+ %on the currently loaded data. For instance, if RTSS has been loaded, then
+ % the buttons that enable "showVOIS" will be enabled.
+ function updateViewMenuAndShowPlanState(handles)  
+   currentPatient = getV('currentPatient');
+   %Then check which of RTSS,RTPLAN and RTDOSE are available and activate
+   %the corresponding options accordingly
+   if isempty(currentPatient) ==0
+       if currentPatient.hasRTSS && currentPatient.hasRTPLAN
+           set(handles.showDwell,'Enable','on');
+       end
+       if currentPatient.hasRTSS
+           set(handles.showVOIS,'Enable','on');
+           set(handles.btnEditVOIs,'Enable','on');
+       end
+
+       if currentPatient.hasRTDOSE
+           set(handles.showIsodoses,'Enable','on');
+       end
+   end
+
+   
+
+%CATEGORY -----------------------------------------------------------------
+% PLOT OPTIONS : ENABLE, DISABLE AND EDIT VOIS AND OTHER PLOT OPTIONS
+
+% --- Executes on button press in btnCreateMCLattice.
+function btnCreateMCLattice_Callback(hObject, eventdata, handles)
+% hObject    handle to btnCreateMCLattice (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+% --- Executes on button press in btnEditVOIs.
+function btnEditVOIs_Callback(hObject, eventdata, handles)
+    destroyOverlays(handles);
+    beep off;    
+          v = frmEditVOIs2;
+    beep on;
+    %restoreCurrentAction(handles);
+   
+% --- Executes on button press in btnInfo.
+function btnInfo_Callback(hObject, eventdata, handles)
+% hObject    handle to btnInfo (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+% --- Executes on button press in btnEditIsodoses.
+function btnEditIsodoses_Callback(hObject, eventdata, handles)
+    destroyOverlays(handles);
+    beep off;    
+          v = frmEditIsodoses;
+    beep on;
+
+
+% --- Executes on button press in btnShowDwellProperties.
+function btnShowDwellProperties_Callback(hObject, eventdata, handles)
+    destroyOverlays(handles);
+    beep off;    
+          v = frmDwellPositions;
+    beep on;
+
+    
+   
+%CATEGORY -----------------------------------------------------------------
+%ENABLE/DISABLE GUI : SWITCH ON/OFF CERTAIN GUI ELEMENTS DEPENDING ON WHAT
+%KIND OF DATA HAVE BEEN LOADED. FOR INSTANCE, THE BUTTONS THAT SWITCH VOIs
+%ON OR OFF SHOULD NOT BE ENABLED IF NO VOIs DATA HAS BEEN LOADED.
+
+function enableGuiForCTData(handles)
+
+    setBtnGroupOrientationState(handles, 'on');
+    setBtnGroupActionsState(handles,'on');
+    setMainLegendState(handles,'on');
+    setFileMenuLoadPlanState(handles,'on');
+    setViewMenuShowPlanState(handles,'off');
+       updateViewer(handles);
+       restoreCurrentAction(handles);
+    
+function enableGuiForFullData(handles)
+
+    setBtnGroupOrientationState(handles, 'on');
+    setBtnGroupActionsState(handles,'on');
+    setMainLegendState(handles,'on');   
+    setFileMenuLoadPlanState(handles,'on');
+    setViewMenuShowPlanState(handles,'on');  
+       updateViewer(handles);
+       restoreCurrentAction(handles);
+    
+function disableGuiMenusAndButtons(handles)
+    destroyOverlays(handles);
+    setBtnGroupOrientationState(handles, 'off');
+    setBtnGroupActionsState(handles,'off');
+    setMainLegendState(handles,'off');   
+    setFileMenuLoadPlanState(handles,'off');    
+    setViewMenuShowPlanState(handles,'off');
+    set(gcf,'WindowButtonDownFcn',@noCallback);
+    set(gcf,'WindowButtonUpFcn'  ,@noCallback);
+    
+%CATEGORY -----------------------------------------------------------------
+%CROSS : SET AND UPDATE WHEN NEW DATA ARE LOADED, WHEN TRAVERSE IS
+%PERFORMED OR CROP IS APPLIED
+
+
+% -------------------------------------------------------------------------
+function setCross(handles,x,y,z)
+% -------------------------------------------------------------------------
+    %Get cross position and limits
+    crossPosition = getV('crossPosition');
+    crossLimits   = getV('crossLimits');
+    
+    %Check if the given position is within the allowed cross limits, and if
+    %so, change accordingly. Croll limits are defined by the number of CT
+    %images that a dataset contains
+    if x > 0 && x <= crossLimits.x
+        crossPosition.x =  x;
+    end
+    if  y > 0 &&  y <= crossLimits.y
+        crossPosition.y =  y;
+    end
+    if z > 0 &&  z <= crossLimits.z
+        crossPosition.z = z;
+    end
+    %Store new cross position
+    setV('crossPosition',crossPosition);
+    %Change the text on the relevant gui elements
+    set(handles.txtCrossZS,'String',['Axial : '   num2str(crossPosition.z) '/' num2str(crossLimits.z)]);
+    set(handles.txtCrossYS,'String',['Sagital : ' num2str(crossPosition.y) '/' num2str(crossLimits.y)]);
+    set(handles.txtCrossXS,'String',['Coronal : ' num2str(crossPosition.x) '/' num2str(crossLimits.x)]);
+    
+ 
+%CATEGORY -----------------------------------------------------------------
+%OVERLAYS : SHOW/HIDE/DESTROY ETC. OVERLAYS SHOULD BE SWITCHED ON AND OFF
+%ACCORDING TO THE MOUSE CLICKS, BUTTON CLICKS AND DATA LOADING.
+
+function destroyOverlays(handles)
+ACTION = getV('currentAction');
+switch ACTION
+    case 'ADJUST'
+        
+    case 'MEASURE'
+        try delete(handles.measureText);catch end;
+        try delete(handles.measureLine);catch end;
+  
+    case 'SNAPSHOT'    
+        try delete(handles.snapRectangle);catch end;
+        try delete(handles.btnSaveSnap);
+        catch e
+            disp(e.message);
+        end;    
+end
+
+
+
+
+%CATEGORY -----------------------------------------------------------------
+% ACTIONS : THIS BUTTON GROUP DEFINES WHAT ACTION IS PERFORMED WHEN THE
+% USER CLICKS WITH THE MOUSE ON AN AXIS.   IT SHOULD ONLY BE ENABLED WHEN
+% PATIENT DATA EXIST.
+
+function setBtnGroupActionsState(handles, state)
+    try
+        set(handles.btnAdjustLW,'Enable',state);
+        set(handles.btnCrop,'Enable',state);
+        set(handles.btnSnapshot,'Enable',state);
+        set(handles.btnMeasure,'Enable',state);
+        set(handles.btnInfo,'Enable',state);
+        set(handles.btnZoom,'Enable',state);
+ 
+    catch e
+        disp(e.message);
+    end
+    
+ function restoreCurrentAction(handles)
+       axes(handles.TopAxes);
+       currentAction = getV('currentAction');
+       %This if is required beacuse while zoom is active, we are not
+       %allowed to change the form callbacks, unless zoom off is called.
+       %however, we do not require to call changeLeftCLickAction when zoom
+       %is enabled. this function is mostly called in order to update the
+       %crop & snapshot rectangles when new data are loaded or when the
+       %orientation mode has changed.
+       if ~strcmp(currentAction,'ZOOM')
+            changeLeftClickAction(handles,currentAction);
+       else 
+            zoom reset;
+       end
+
+% --- Executes when selected object is changed in btnGroupActions.
+function btnGroupActions_SelectionChangeFcn(hObject, eventdata, handles)
+       zoom off;
+       set(gcf,'WindowScrollWheelFcn',{@frmMainTPS_WindowScrollWheelFcn, handles});
+       destroyOverlays(handles);
+       updateViewer(handles);
+       
+
+       newButton=get(eventdata.NewValue,'tag');
+        switch newButton
+            case 'btnAdjustLW'
+                axes(handles.TopAxes);
+                setV('currentAction','ADJUST');
+                changeLeftClickAction(handles,'ADJUST');
+                
+  
+            case 'btnZoom'
+                axes(handles.TopAxes);
+                setV('currentAction','ZOOM');
+                changeLeftClickAction(handles,'ZOOM');
+ 
+            case 'btnCrop'
+                axes(handles.TopAxes);
+                setV('currentAction','CROP');
+                changeLeftClickAction(handles,'CROP');
+                
+                
+            case 'btnSnapshot'
+                axes(handles.TopAxes);
+                setV('currentAction','SNAPSHOT');
+                changeLeftClickAction(handles,'SNAPSHOT');
+
+            
+            case 'btnMeasure'
+                axes(handles.TopAxes);
+                setV('currentAction','MEASURE');
+                changeLeftClickAction(handles,'MEASURE');
+
+        end
+
+        
+% -------------------------------------------------------------------------        
+function changeLeftClickAction(handles,action)
+% -------------------------------------------------------------------------
+    setV('leftClickAction',action);
+    set(gcf,'WindowButtonDownFcn',@noCallback);
+    set(gcf,'WindowButtonUpFcn'  ,@noCallback);
+    
+        switch action
+            case 'ADJUST'
+                set(gcf,'WindowButtonDownFcn',@startAdjustLW);
+                setV('adjustLWState',0);
+                
+            case 'MEASURE'
+                set(gcf,'WindowButtonDownFcn',@startMeasure);
+                setV('measureIsOn',0);
+                
+            case 'SNAPSHOT'
+                setV('snapIsOn',0);
+                initSnap(handles);
+            
+            case 'btnCrop'
+                
+            case 'ZOOM'
+                h = zoom(handles.TopAxes);
+                set(h,'ActionPostCallback',{@refreshZoom,h});
+                set(h,'Enable','on');
+        end
+        
+      
+        
+        
+function refreshZoom(obj,event_obj,h)
+        
+        getZoom();
+        origInfo = getappdata(gca, 'matlab_graphics_resetplotview');
+        if isempty(origInfo)
+           isZoomed = false;
+        elseif isequal(get(gca,'XLim'), origInfo.XLim) && ...
+               isequal(get(gca,'YLim'), origInfo.YLim) && ...
+               isequal(get(gca,'ZLim'), origInfo.ZLim)
+           isZoomed = false;
+        else
+           isZoomed = true;
+        end
+ 
+function initZoom()
+      setV('AxialZoom',[]);
+      setV('SagitalZoom',[]);
+      setV('CoronalZoom',[]);
+      
+      
+function getZoom()
+    refreshCurrentMousePos(gcf);
+    currentAxes = getV('currentMousePos');
+    currentZoom = [get(gca,'XLim') get(gca,'YLim') get(gca,'ZLim')];
+    switch currentAxes
+        case 'TopAxes'
+            setV(strcat(getV('currentTopView'),'Zoom'),currentZoom);
+        case 'BottomLAxes'
+            setV(strcat(getV('currentBottomLView'),'Zoom'),currentZoom);
+        case 'BottomRAxes'
+            setV(strcat(getV('currentBottomRView'),'Zoom'),currentZoom);
+    end
+     

@@ -1,0 +1,31 @@
+
+[c, hcont]= contour(currentPatient.RTDOSEcoordinates.xind,...
+                    currentPatient.RTDOSEcoordinates.yind,...
+                    currentPatient.RTDOSE(:,:,10),[5 10 30]);
+                      
+
+map =   [1 0 0; 0 1 0; 0 0 1; ];
+
+                   cc = get(hcont,'children');
+
+                   
+                   for i = numel(cc):-1:12
+                        set(cc(i),'EdgeColor',map(16-i,:),'LineStyle','-','LineWidth',2)     
+                   end
+                    
+                   clear c hcont
+                   
+                   
+                   %%
+                              
+                    cMatrix = get(hcont,'Children') ;
+                    
+                    
+                     get(hcont,'Color')
+                    
+                    ic = 1;
+                    while ic <= 11
+                         set(cMatrix(ic,1),'FaceColor',isodoseColorMap(ic,:))
+                         ic = ic + 1;
+                    end
+                    clear hcont cMatrix
